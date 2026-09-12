@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MPLADS Live Risk Scorer — SIH26102</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #F2F0E9;
+    --paper-raised: #FBFAF6;
+    --ink: #1C2333;
+    --ink-soft: #4A5164;
+    --line: #C9C2AE;
+    --line-soft: #DEDACB;
+    --stamp-red: #A6382B;
+    --stamp-red-bg: #F4E2DE;
+    --stamp-amber: #B87A1F;
+    --stamp-amber-bg: #F5E9D4;
+    --stamp-green: #3B6B45;
+    --stamp-green-bg: #E3EBE0;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    line-height: 1.5;
+  }
+
+  .page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 48px 32px 80px;
+  }
+
+  header {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 24px;
+    margin-bottom: 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  header .mark {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-soft);
+    letter-spacing: 0.02em;
+  }
+
+  h1 {
+    font-family: 'Source Serif 4', serif;
+    font-weight: 600;
+    font-size: 30px;
+    margin: 6px 0 4px;
+  }
+
+  header p {
+    color: var(--ink-soft);
+    font-size: 14px;
+    margin: 0;
+    max-width: 480px;
+  }
+
+  .config-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+  }
+
+  .config-row input {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: var(--paper-raised);
+    color: var(--ink);
+    width: 300px;
+  }
+
+  .config-row span { color: var(--ink-soft); }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 32px;
+    align-items: start;
+  }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 28px 28px 24px;
+  }
+
+  .panel h2 {
+    font-family: 'Source Serif 4', serif;
+    font-weight: 600;
+    font-size: 17px;
+    margin: 0 0 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .field-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 16px;
+    margin-bottom: 18px;
+  }
+
+  .field-group.single { grid-template-columns: 1fr; }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+
+  .field label {
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+
+  .field input, .field select {
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: #fff;
+    color: var(--ink);
+  }
+
+  .field input:focus, .field select:focus {
+    outline: none;
+    border-color: var(--ink-soft);
+  }
+
+  .field-error {
+    font-size: 12px;
+    color: var(--stamp-red);
+    display: none;
+  }
+
+  .field.has-error input, .field.has-error select {
+    border-color: var(--stamp-red);
+  }
+
+  .field.has-error .field-error { display: block; }
+
+  .divider-label {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin: 4px 0 12px;
+    padding-top: 6px;
+    border-top: 1px solid var(--line-soft);
+  }
+
+  button.submit {
+    width: 100%;
+    padding: 12px;
+    background: var(--ink);
+    color: var(--paper-raised);
+    border: none;
+    border-radius: 3px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+
+  button.submit:hover { background: #2A3345; }
+  button.submit:disabled { opacity: 0.6; cursor: default; }
+
+  .result-empty {
+    color: var(--ink-soft);
+    font-size: 14px;
+    padding: 20px 0 8px;
+  }
+
+  .verdict {
+    display: none;
+  }
+
+  .verdict.show { display: block; }
+
+  .score-block {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  .score-number {
+    font-family: 'Source Serif 4', serif;
+    font-weight: 600;
+    font-size: 48px;
+    line-height: 1;
+  }
+
+  .score-band {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    padding: 4px 10px;
+    border-radius: 3px;
+    text-transform: lowercase;
+  }
+
+  .band-high { background: var(--stamp-red-bg); color: var(--stamp-red); }
+  .band-medium { background: var(--stamp-amber-bg); color: var(--stamp-amber); }
+  .band-low { background: var(--stamp-green-bg); color: var(--stamp-green); }
+
+  .score-caption {
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin-bottom: 22px;
+  }
+
+  .flags-title {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin: 0 0 10px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line-soft);
+  }
+
+  .flag-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: 13px;
+  }
+
+  .flag-row:last-child { border-bottom: none; }
+
+  .flag-name { color: var(--ink); }
+
+  .flag-status {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+  }
+
+  .flag-fired { color: var(--stamp-red); }
+  .flag-clear { color: var(--ink-soft); }
+
+  .iso-row {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line-soft);
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+
+  .iso-row strong { color: var(--ink); font-weight: 500; }
+
+  .cold-start-note {
+    margin-top: 16px;
+    padding: 10px 12px;
+    background: var(--stamp-amber-bg);
+    color: var(--stamp-amber);
+    border-radius: 3px;
+    font-size: 12px;
+  }
+
+  .error-note {
+    margin-top: 16px;
+    padding: 10px 12px;
+    background: var(--stamp-red-bg);
+    color: var(--stamp-red);
+    border-radius: 3px;
+    font-size: 13px;
+    display: none;
+  }
+
+  .error-note.show { display: block; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div>
+      <div class="mark">SIH26102 &middot; MoSPI &middot; live inference</div>
+      <h1>MPLADS live risk scorer</h1>
+      <p>Enter a new works entry to score it against the trained fraud detection model.</p>
+    </div>
+    <div class="config-row">
+      <span>API base URL</span>
+      <input id="apiBase" type="text" value="https://YOUR-RENDER-URL.onrender.com" />
+    </div>
+  </header>
+
+  <div class="layout">
+
+    <div class="panel">
+      <h2>New works entry</h2>
+      <form id="entryForm">
+
+        <div class="field-group">
+          <div class="field" data-field="state">
+            <label for="state">State</label>
+            <select id="state"></select>
+          </div>
+          <div class="field" data-field="district">
+            <label for="district">District</label>
+            <input id="district" type="text" placeholder="Mysuru" />
+            <span class="field-error">Enter a district.</span>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <div class="field" data-field="mp_name">
+            <label for="mp_name">MP name</label>
+            <input id="mp_name" type="text" placeholder="MP_059" />
+            <span class="field-error">Enter an MP identifier.</span>
+          </div>
+          <div class="field" data-field="mp_party">
+            <label for="mp_party">MP party</label>
+            <select id="mp_party"></select>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <div class="field" data-field="work_category">
+            <label for="work_category">Work category</label>
+            <select id="work_category"></select>
+          </div>
+          <div class="field" data-field="implementing_agency">
+            <label for="implementing_agency">Implementing agency</label>
+            <select id="implementing_agency"></select>
+          </div>
+        </div>
+
+        <div class="field-group single">
+          <div class="field" data-field="vendor_name">
+            <label for="vendor_name">Vendor name</label>
+            <input id="vendor_name" type="text" placeholder="Vendor_096" />
+            <span class="field-error">Enter a vendor name.</span>
+          </div>
+        </div>
+
+        <div class="divider-label">Financials and timeline</div>
+
+        <div class="field-group">
+          <div class="field" data-field="sanctioned_amount_inr">
+            <label for="sanctioned_amount_inr">Sanctioned amount (INR)</label>
+            <input id="sanctioned_amount_inr" type="number" min="1" placeholder="1500000" />
+            <span class="field-error">Enter an amount greater than 0.</span>
+          </div>
+          <div class="field" data-field="expenditure_inr">
+            <label for="expenditure_inr">Expenditure so far (INR)</label>
+            <input id="expenditure_inr" type="number" min="0" placeholder="1450000" />
+            <span class="field-error">Enter an amount of 0 or more.</span>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <div class="field" data-field="sanction_date">
+            <label for="sanction_date">Sanction date</label>
+            <input id="sanction_date" type="date" />
+            <span class="field-error">Select a sanction date.</span>
+          </div>
+          <div class="field" data-field="status">
+            <label for="status">Status</label>
+            <select id="status">
+              <option value="Sanctioned - Not Started">Sanctioned - not started</option>
+              <option value="Ongoing">Ongoing</option>
+              <option value="Delayed">Delayed</option>
+              <option value="Completed">Completed</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-group single" id="completionDateGroup" style="display:none;">
+          <div class="field" data-field="completion_date">
+            <label for="completion_date">Completion date</label>
+            <input id="completion_date" type="date" />
+            <span class="field-error">Select a completion date on or after the sanction date.</span>
+          </div>
+        </div>
+
+        <button type="submit" class="submit" id="submitBtn">Assess risk</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>Assessment</h2>
+      <div class="result-empty" id="resultEmpty">Fill in the entry and run an assessment to see the risk verdict here.</div>
+
+      <div class="verdict" id="verdict">
+        <div class="score-block">
+          <div class="score-number" id="scoreNumber">0</div>
+          <div class="score-band" id="scoreBand">low</div>
+        </div>
+        <div class="score-caption" id="scoreCaption">composite risk score, out of 100</div>
+
+        <div class="flags-title">Rule flags</div>
+        <div id="flagsList"></div>
+
+        <div class="iso-row">
+          Isolation forest verdict: <strong id="isoVerdict">normal</strong>
+        </div>
+
+        <div class="cold-start-note" id="coldStartNote" style="display:none;">
+          This vendor has no prior history in the training data. Vendor-level features fall back to category averages.
+        </div>
+      </div>
+
+      <div class="error-note" id="errorNote"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const FLAG_LABELS = {
+  flag_fund_splitting: 'Fund splitting',
+  flag_fiscal_dumping: 'Fiscal year-end dumping',
+  flag_cost_overrun: 'Cost overrun',
+  flag_ghost_fast: 'Implausibly fast completion',
+  flag_round_invoice: 'Round-number invoice',
+};
+
+const FALLBACK_VALUES = {
+  states: ['Karnataka','Punjab','Maharashtra','Uttar Pradesh','Tamil Nadu','West Bengal','Rajasthan','Gujarat','Bihar','Kerala'],
+  work_categories: ['School Building Repair','Solar Street Lighting','Road Construction','Drinking Water Supply','Community Hall'],
+  implementing_agencies: ['State Electricity Board','Zila Parishad','PWD','Municipal Corporation'],
+  mp_parties: ['Party_A','Party_B','Party_C','Party_D','Party_E'],
+};
+
+function populateSelect(id, values) {
+  const el = document.getElementById(id);
+  el.innerHTML = values.map(v => `<option value="${v}">${v}</option>`).join('');
+}
+
+async function loadKnownValues() {
+  const base = document.getElementById('apiBase').value.replace(/\/$/, '');
+  try {
+    const res = await fetch(`${base}/known-values`);
+    if (!res.ok) throw new Error('bad response');
+    const data = await res.json();
+    populateSelect('state', data.states);
+    populateSelect('work_category', data.work_categories);
+    populateSelect('implementing_agency', data.implementing_agencies);
+    populateSelect('mp_party', data.mp_parties);
+  } catch (e) {
+    populateSelect('state', FALLBACK_VALUES.states);
+    populateSelect('work_category', FALLBACK_VALUES.work_categories);
+    populateSelect('implementing_agency', FALLBACK_VALUES.implementing_agencies);
+    populateSelect('mp_party', FALLBACK_VALUES.mp_parties);
+  }
+}
+
+document.getElementById('apiBase').addEventListener('change', loadKnownValues);
+loadKnownValues();
+
+document.getElementById('status').addEventListener('change', (e) => {
+  const group = document.getElementById('completionDateGroup');
+  group.style.display = e.target.value === 'Completed' ? 'block' : 'none';
+});
+
+function clearErrors() {
+  document.querySelectorAll('.field').forEach(f => f.classList.remove('has-error'));
+}
+
+function setError(fieldName) {
+  const el = document.querySelector(`.field[data-field="${fieldName}"]`);
+  if (el) el.classList.add('has-error');
+}
+
+function validate() {
+  clearErrors();
+  let valid = true;
+
+  const district = document.getElementById('district').value.trim();
+  if (!district) { setError('district'); valid = false; }
+
+  const mpName = document.getElementById('mp_name').value.trim();
+  if (!mpName) { setError('mp_name'); valid = false; }
+
+  const vendorName = document.getElementById('vendor_name').value.trim();
+  if (!vendorName) { setError('vendor_name'); valid = false; }
+
+  const sanctioned = parseFloat(document.getElementById('sanctioned_amount_inr').value);
+  if (!(sanctioned > 0)) { setError('sanctioned_amount_inr'); valid = false; }
+
+  const expenditure = parseFloat(document.getElementById('expenditure_inr').value);
+  if (!(expenditure >= 0)) { setError('expenditure_inr'); valid = false; }
+
+  const sanctionDate = document.getElementById('sanction_date').value;
+  if (!sanctionDate) { setError('sanction_date'); valid = false; }
+
+  const status = document.getElementById('status').value;
+  if (status === 'Completed') {
+    const completionDate = document.getElementById('completion_date').value;
+    if (!completionDate || (sanctionDate && completionDate < sanctionDate)) {
+      setError('completion_date');
+      valid = false;
+    }
+  }
+
+  return valid;
+}
+
+function scoreBand(score) {
+  if (score >= 70) return { cls: 'band-high', label: 'high risk' };
+  if (score >= 40) return { cls: 'band-medium', label: 'medium risk' };
+  return { cls: 'band-low', label: 'low risk' };
+}
+
+function renderResult(data) {
+  document.getElementById('resultEmpty').style.display = 'none';
+  document.getElementById('errorNote').classList.remove('show');
+
+  const verdict = document.getElementById('verdict');
+  verdict.classList.add('show');
+
+  const score = data.composite_risk_score;
+  document.getElementById('scoreNumber').textContent = Math.round(score * 10) / 10;
+  const band = scoreBand(score);
+  const bandEl = document.getElementById('scoreBand');
+  bandEl.className = `score-band ${band.cls}`;
+  bandEl.textContent = band.label;
+
+  const flagsList = document.getElementById('flagsList');
+  flagsList.innerHTML = '';
+  Object.entries(FLAG_LABELS).forEach(([key, label]) => {
+    const fired = data.flags[key] === 1;
+    const row = document.createElement('div');
+    row.className = 'flag-row';
+    row.innerHTML = `<span class="flag-name">${label}</span><span class="flag-status ${fired ? 'flag-fired' : 'flag-clear'}">${fired ? 'fired' : 'clear'}</span>`;
+    flagsList.appendChild(row);
+  });
+
+  document.getElementById('isoVerdict').textContent = data.iso_pred;
+
+  document.getElementById('coldStartNote').style.display = data.cold_start_vendor ? 'block' : 'none';
+}
+
+document.getElementById('entryForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!validate()) return;
+
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Scoring...';
+
+  const status = document.getElementById('status').value;
+  const payload = {
+    state: document.getElementById('state').value,
+    district: document.getElementById('district').value.trim(),
+    mp_name: document.getElementById('mp_name').value.trim(),
+    mp_party: document.getElementById('mp_party').value,
+    work_category: document.getElementById('work_category').value,
+    implementing_agency: document.getElementById('implementing_agency').value,
+    vendor_name: document.getElementById('vendor_name').value.trim(),
+    sanction_date: document.getElementById('sanction_date').value,
+    sanctioned_amount_inr: parseFloat(document.getElementById('sanctioned_amount_inr').value),
+    expenditure_inr: parseFloat(document.getElementById('expenditure_inr').value),
+    status: status,
+    completion_date: status === 'Completed' ? document.getElementById('completion_date').value : null,
+  };
+
+  const base = document.getElementById('apiBase').value.replace(/\/$/, '');
+
+  try {
+    const res = await fetch(`${base}/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error(`API returned ${res.status}: ${errBody}`);
+    }
+    const data = await res.json();
+    renderResult(data);
+  } catch (err) {
+    const errorNote = document.getElementById('errorNote');
+    errorNote.textContent = `Couldn't reach the scoring API. Check the API base URL above and that the Render service is awake. (${err.message})`;
+    errorNote.classList.add('show');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Assess risk';
+  }
+});
+</script>
+
+</body>
+</html>
