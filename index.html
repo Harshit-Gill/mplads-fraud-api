@@ -220,7 +220,7 @@
             </div>
             <div class="field" data-field="district">
               <label for="district">District</label>
-              <input id="district" type="text" placeholder="Mysuru" />
+              <select id="district"></select>
               <span class="field-error">Enter a district.</span>
             </div>
           </div>
@@ -228,12 +228,12 @@
           <div class="field-group">
             <div class="field" data-field="mp_name">
               <label for="mp_name">MP name</label>
-              <input id="mp_name" type="text" placeholder="MP_059" />
+              <select id="mp_name"></select>
               <span class="field-error">Enter an MP identifier.</span>
             </div>
             <div class="field" data-field="mp_party">
-              <label for="mp_party">MP party</label>
-              <select id="mp_party"></select>
+              <label for="mp_party">MP party (set by MP)</label>
+              <select id="mp_party" disabled></select>
             </div>
           </div>
 
@@ -251,7 +251,7 @@
           <div class="field-group single">
             <div class="field" data-field="vendor_name">
               <label for="vendor_name">Vendor name</label>
-              <input id="vendor_name" type="text" placeholder="Vendor_096" />
+              <select id="vendor_name"></select>
               <span class="field-error">Enter a vendor name.</span>
             </div>
           </div>
@@ -437,26 +437,60 @@ function populateSelect(id, values) {
   el.innerHTML = values.map(v => `<option value="${v}">${v}</option>`).join('');
 }
 
-async function loadKnownValues() {
-  const base = document.getElementById('apiBase').value.replace(/\/$/, '');
-  try {
-    const res = await fetch(`${base}/known-values`);
-    if (!res.ok) throw new Error('bad response');
-    const data = await res.json();
-    populateSelect('state', data.states);
-    populateSelect('work_category', data.work_categories);
-    populateSelect('implementing_agency', data.implementing_agencies);
-    populateSelect('mp_party', data.mp_parties);
-  } catch (e) {
+// Dropdown options come from the dataset itself (scored_works.json), so the form
+// only offers states, districts, MPs, vendors etc. that the model has seen.
+// Hierarchy in the data: state -> district -> MP, and each MP has one party.
+const OPTIONS = { districtsByState: {}, mpsByDistrict: {}, partyByMp: {} };
+
+function uniqSorted(values) {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+}
+
+function buildFormOptions() {
+  if (!SCORED_DATA.length) {
     populateSelect('state', FALLBACK_VALUES.states);
     populateSelect('work_category', FALLBACK_VALUES.work_categories);
     populateSelect('implementing_agency', FALLBACK_VALUES.implementing_agencies);
     populateSelect('mp_party', FALLBACK_VALUES.mp_parties);
+    return;
   }
+  const districtsByState = {}, mpsByDistrict = {};
+  SCORED_DATA.forEach(r => {
+    (districtsByState[r.state] ||= new Set()).add(r.district);
+    (mpsByDistrict[r.district] ||= new Set()).add(r.mp_name);
+    OPTIONS.partyByMp[r.mp_name] = r.mp_party;
+  });
+  for (const s in districtsByState) OPTIONS.districtsByState[s] = uniqSorted(districtsByState[s]);
+  for (const d in mpsByDistrict) OPTIONS.mpsByDistrict[d] = uniqSorted(mpsByDistrict[d]);
+
+  populateSelect('state', uniqSorted(Object.keys(districtsByState)));
+  populateSelect('mp_party', uniqSorted(SCORED_DATA.map(r => r.mp_party)));
+  populateSelect('work_category', uniqSorted(SCORED_DATA.map(r => r.work_category)));
+  populateSelect('implementing_agency', uniqSorted(SCORED_DATA.map(r => r.implementing_agency)));
+  populateSelect('vendor_name', uniqSorted(SCORED_DATA.map(r => r.vendor_name)));
+  onStateChange();
 }
 
-document.getElementById('apiBase').addEventListener('change', loadKnownValues);
-loadKnownValues();
+function onStateChange() {
+  const state = document.getElementById('state').value;
+  populateSelect('district', OPTIONS.districtsByState[state] || []);
+  onDistrictChange();
+}
+
+function onDistrictChange() {
+  const district = document.getElementById('district').value;
+  populateSelect('mp_name', OPTIONS.mpsByDistrict[district] || []);
+  onMpChange();
+}
+
+function onMpChange() {
+  const party = OPTIONS.partyByMp[document.getElementById('mp_name').value];
+  if (party) document.getElementById('mp_party').value = party;
+}
+
+document.getElementById('state').addEventListener('change', onStateChange);
+document.getElementById('district').addEventListener('change', onDistrictChange);
+document.getElementById('mp_name').addEventListener('change', onMpChange);
 
 document.getElementById('status').addEventListener('change', (e) => {
   const group = document.getElementById('completionDateGroup');
@@ -729,6 +763,7 @@ async function loadScoredData() {
   } catch (err) {
     document.getElementById('evalNote').textContent = 'Could not load scored works (' + err.message + ').';
   }
+  buildFormOptions();
   computeMetrics();
   renderTable();
 }
