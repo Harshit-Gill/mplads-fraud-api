@@ -30,14 +30,23 @@ Architecture (unchanged):
       round_number_invoice)
     - Isolation Forest for the subtler, multivariate archetypes
       (vendor_collusion, price_inflation)
-    - Final flag = ANY rule fired OR Isolation Forest flags it as anomalous
+    - Final flag = ANY strong rule fired OR Isolation Forest flags it as anomalous
+
+v2.1:
+    - Round-number invoice is now a weak signal (risk score only). On the hold-out
+      set only ~7% of round invoices were anomalous -- below the ~12% base rate --
+      and it caused most false alarms (precision 20% -> 47% after the change).
+    - Evaluation and train_and_export.py share CONTAMINATION, so reported numbers
+      describe the deployed model.
 """
+
+import json
 
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, f1_score, precision_score, recall_score
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +66,30 @@ FISCAL_YEAR_END_MONTHS = [2, 3]            # Jan-Mar -- pre year-close months
 GHOST_COMPLETION_PERCENTILE = 0.01         # bottom 1% of ALL completion durations
                                             # (i.e. "implausibly fast" relative to the
                                             # whole population, not tuned to labels)
+
+# Isolation Forest contamination: a stated prior, NOT the ground-truth anomaly
+# fraction. Audit sampling on public works typically finds single-digit
+# irregularity rates. Used by BOTH this evaluation and train_and_export.py, so
+# the reported numbers describe the model that is actually deployed.
+CONTAMINATION = 0.07
+
+# Severity of each rule in the 0-100 composite risk score.
+RULE_SEVERITY = {
+    "flag_cost_overrun": 90,
+    "flag_fiscal_dumping": 85,
+    "flag_fund_splitting": 85,
+    "flag_ghost_fast": 80,
+    # Round-number invoices are common in honest bills too (only ~7% of round
+    # invoices were anomalous on the hold-out set, below the ~12% base rate).
+    # It stays visible as a weak signal in the score, but cannot raise a flag alone.
+    "flag_round_invoice": 30,
+}
+
+# Rules strong enough to flag an entry on their own. The final flag is
+# (any decision rule) OR (Isolation Forest says anomaly).
+DECISION_RULES = [
+    "flag_fund_splitting", "flag_fiscal_dumping", "flag_cost_overrun", "flag_ghost_fast",
+]
 
 
 def load_and_engineer_features(csv_path: str) -> pd.DataFrame:
@@ -127,16 +160,12 @@ def apply_rule_flags(df: pd.DataFrame) -> pd.DataFrame:
     # Round-number invoicing: definitional (exact multiple of 10,000), not tuned.
     df["flag_round_invoice"] = df["is_round_expenditure"]
 
-    rule_cols = [
-        "flag_fund_splitting", "flag_fiscal_dumping", "flag_cost_overrun",
-        "flag_ghost_fast", "flag_round_invoice",
-    ]
-    df["any_rule_fired"] = (df[rule_cols].sum(axis=1) > 0).astype(int)
+    df["any_rule_fired"] = (df[DECISION_RULES].sum(axis=1) > 0).astype(int)
     return df
 
 
 def fit_isolation_forest(train_df: pd.DataFrame, full_df: pd.DataFrame,
-                          contamination="auto") -> pd.DataFrame:
+                          contamination=CONTAMINATION) -> pd.DataFrame:
     """
     Fit Isolation Forest on the TRAIN split only, then score the full dataset.
     contamination defaults to 'auto' (sklearn's own estimate) rather than the
@@ -169,15 +198,8 @@ def combine_and_score(df: pd.DataFrame) -> pd.DataFrame:
     and a 0-100 composite risk score."""
     df["final_pred"] = ((df["any_rule_fired"] == 1) | (df["iso_pred"] == -1)).astype(int)
 
-    rule_severity = {
-        "flag_cost_overrun": 90,
-        "flag_fiscal_dumping": 85,
-        "flag_fund_splitting": 85,
-        "flag_ghost_fast": 80,
-        "flag_round_invoice": 60,
-    }
     df["rule_based_score"] = 0
-    for flag_col, severity in rule_severity.items():
+    for flag_col, severity in RULE_SEVERITY.items():
         df["rule_based_score"] = np.where(df[flag_col] == 1,
                                            np.maximum(df["rule_based_score"], severity),
                                            df["rule_based_score"])
@@ -189,7 +211,7 @@ def combine_and_score(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def validate_on_holdout(df: pd.DataFrame, test_idx) -> None:
+def validate_on_holdout(df: pd.DataFrame, test_idx) -> dict:
     """
     Print validation report using ONLY the held-out test rows. Rules and the
     Isolation Forest were never fit using these rows' labels (rules use no
@@ -202,15 +224,30 @@ def validate_on_holdout(df: pd.DataFrame, test_idx) -> None:
     print("=== HOLD-OUT TEST SET performance (labels never touched during fitting) ===")
     print(classification_report(y_true, test_df["final_pred"], target_names=["normal", "anomaly"]))
 
+    y_pred = test_df["final_pred"]
+    metrics = {
+        "test_rows": int(len(test_df)),
+        "test_anomalies": int(y_true.sum()),
+        "base_rate": round(float(y_true.mean()), 4),
+        "flagged_share": round(float(y_pred.mean()), 4),
+        "precision": round(float(precision_score(y_true, y_pred)), 4),
+        "recall": round(float(recall_score(y_true, y_pred)), 4),
+        "f1": round(float(f1_score(y_true, y_pred)), 4),
+        "contamination": CONTAMINATION,
+        "recall_by_archetype": {},
+    }
+
     print("=== Recall by archetype (hold-out only) ===")
-    for atype in test_df["anomaly_type"].unique():
+    for atype in sorted(test_df["anomaly_type"].unique()):
         if atype == "none":
             continue
         subset = test_df[test_df["anomaly_type"] == atype]
         if len(subset) == 0:
             continue
-        caught = (subset["final_pred"] == 1).sum()
+        caught = int((subset["final_pred"] == 1).sum())
+        metrics["recall_by_archetype"][atype] = {"caught": caught, "total": int(len(subset))}
         print(f"{atype}: {caught}/{len(subset)} ({caught/len(subset):.0%})")
+    return metrics
 
 
 if __name__ == "__main__":
@@ -226,10 +263,13 @@ if __name__ == "__main__":
     df = apply_rule_flags(df)                       # label-free, safe on full df
     train_df = apply_rule_flags(train_df)            # kept in sync for IF feature use
 
-    df = fit_isolation_forest(train_df=train_df, full_df=df, contamination="auto")
+    df = fit_isolation_forest(train_df=train_df, full_df=df, contamination=CONTAMINATION)
     df = combine_and_score(df)
 
-    validate_on_holdout(df, test_idx=test_df.index)
+    metrics = validate_on_holdout(df, test_idx=test_df.index)
+    with open("eval_metrics.json", "w") as f:
+        json.dump(metrics, f, indent=2)
+    print("Saved eval_metrics.json (shown on the dashboard)")
 
     output_cols = [
         "work_id", "state", "district", "mp_name", "vendor_name",

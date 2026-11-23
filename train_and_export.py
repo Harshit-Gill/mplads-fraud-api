@@ -30,14 +30,21 @@ from mplads_fraud_detection_v2 import (
     SPLIT_LIMIT_BAND,
     FISCAL_YEAR_END_MONTHS,
     GHOST_COMPLETION_PERCENTILE,
+    CONTAMINATION,
+    RULE_SEVERITY,
+    DECISION_RULES,
 )
 
-# Chosen contamination: NOT fit to match the exact ground-truth anomaly fraction
-# (that would be circular). 0.07 is a stated assumption -- audit sampling
-# literature on public works schemes typically finds single-digit-percentage
-# irregularity rates. State this explicitly on your limitations slide.
-CONTAMINATION = 0.07
+# CONTAMINATION, RULE_SEVERITY and DECISION_RULES come from mplads_fraud_detection_v2.py,
+# so the deployed model matches the one evaluated there.
 
+SCORED_COLS = [
+    "work_id", "state", "district", "mp_name", "mp_party", "work_category",
+    "implementing_agency", "vendor_name", "sanction_date", "completion_date", "status",
+    "sanctioned_amount_inr", "expenditure_inr", "utilization_ratio",
+    "flag_fund_splitting", "flag_fiscal_dumping", "flag_cost_overrun",
+    "flag_ghost_fast", "flag_round_invoice", "iso_pred", "composite_risk_score", "final_pred",
+]
 FREQ_COLS = ["state", "district", "work_category", "implementing_agency", "vendor_name", "mp_party"]
 IF_FEATURE_COLS = [
     "vendor_cat_deviation", "vendor_distinct_mp_count", "vendor_total_expenditure",
@@ -112,13 +119,24 @@ def main():
         "if_feature_cols": IF_FEATURE_COLS,
         "freq_cols": FREQ_COLS,
         "contamination_used": CONTAMINATION,
+        "rule_severity": RULE_SEVERITY,
+        "decision_rules": DECISION_RULES,
     }
 
     joblib.dump(iso, "iso_model.joblib")
     with open("artifacts.json", "w") as f:
         json.dump(artifacts, f)
 
-    print("Saved iso_model.joblib and artifacts.json")
+    # --- Scored works for the dashboard's auditor view (kept out of index.html) ---
+    out = df[SCORED_COLS].copy()
+    out["sanction_date"] = out["sanction_date"].dt.strftime("%Y-%m-%d")
+    out["completion_date"] = out["completion_date"].dt.strftime("%Y-%m-%d").fillna("")
+    out["sanctioned_amount_inr"] = out["sanctioned_amount_inr"].round().astype(int)
+    out["expenditure_inr"] = out["expenditure_inr"].round().astype(int)
+    out["utilization_ratio"] = out["utilization_ratio"].round(3)
+    out.to_json("scored_works.json", orient="records")
+
+    print("Saved iso_model.joblib, artifacts.json and scored_works.json")
     print(f"Trained on {len(df)} rows, contamination={CONTAMINATION}")
     print(f"Unique vendors: {df['vendor_name'].nunique()}, unique MPs: {df['mp_name'].nunique()}")
 

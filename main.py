@@ -14,23 +14,23 @@ we fall back to a category-level or global average / the rarest observed
 frequency. This is an honest limitation -- flag it in your presentation.
 """
 
-from datetime import date, datetime
-from typing import Optional
+from datetime import date
+from typing import Literal, Optional
 
 import joblib
 import json
 import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-app = FastAPI(title="MPLADS Fraud Detection API", version="2.0")
+app = FastAPI(title="MPLADS Fraud Detection API", version="2.1")
 
-# CORS: allow the dashboard (any origin) to call this API from the browser.
+# CORS: only the GitHub Pages dashboard may call this API from a browser.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=["https://harshit-gill.github.io"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -39,13 +39,11 @@ iso_model = joblib.load("iso_model.joblib")
 with open("artifacts.json") as f:
     A = json.load(f)
 
-RULE_SEVERITY = {
-    "flag_cost_overrun": 90,
-    "flag_fiscal_dumping": 85,
-    "flag_fund_splitting": 85,
-    "flag_ghost_fast": 80,
-    "flag_round_invoice": 60,
-}
+# Rule severities and which rules can flag on their own are set in
+# mplads_fraud_detection_v2.py and exported by train_and_export.py,
+# so the API always matches the evaluated model.
+RULE_SEVERITY = A["rule_severity"]
+DECISION_RULES = A["decision_rules"]
 
 
 class WorkEntry(BaseModel):
@@ -59,8 +57,14 @@ class WorkEntry(BaseModel):
     sanction_date: date
     sanctioned_amount_inr: float = Field(gt=0)
     expenditure_inr: float = Field(ge=0)
-    status: str  # "Completed" | "Ongoing" | "Delayed" | "Sanctioned - Not Started"
+    status: Literal["Completed", "Ongoing", "Delayed", "Sanctioned - Not Started"]
     completion_date: Optional[date] = None
+
+    @model_validator(mode="after")
+    def check_dates(self):
+        if self.completion_date is not None and self.completion_date < self.sanction_date:
+            raise ValueError("completion_date cannot be before sanction_date")
+        return self
 
 
 def freq_lookup(col: str, value: str) -> float:
@@ -149,7 +153,7 @@ def score_entry(entry: WorkEntry) -> dict:
         "flag_ghost_fast": flag_ghost_fast,
         "flag_round_invoice": flag_round_invoice,
     }
-    any_rule_fired = int(any(flags.values()))
+    any_rule_fired = int(any(flags[name] for name in DECISION_RULES))
 
     X = np.array([[f[col] for col in A["if_feature_cols"]]])
     iso_pred = int(iso_model.predict(X)[0])       # -1 anomaly, 1 normal

@@ -1,0 +1,40 @@
+{
+  "test_rows": 2165,
+  "test_anomalies": 252,
+  "base_rate": 0.1164,
+  "flagged_share": 0.1326,
+  "precision": 0.4739,
+  "recall": 0.5397,
+  "f1": 0.5046,
+  "contamination": 0.07,
+  "recall_by_archetype": {
+    "cost_overrun": {
+      "caught": 45,
+      "total": 45
+    },
+    "fiscal_year_end_dumping": {
+      "caught": 42,
+      "total": 42
+    },
+    "fund_splitting": {
+      "caught": 6,
+      "total": 37
+    },
+    "ghost_fast_completion": {
+      "caught": 11,
+      "total": 34
+    },
+    "price_inflation": {
+      "caught": 10,
+      "total": 31
+    },
+    "round_number_invoice": {
+      "caught": 3,
+      "total": 15
+    },
+    "vendor_collusion": {
+      "caught": 19,
+      "total": 48
+    }
+  }
+}
